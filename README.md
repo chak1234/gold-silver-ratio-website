@@ -1,6 +1,6 @@
 # Gold/Silver Ratio Tracker
 
-A web dashboard for the gold/silver ratio: spot prices in USD, CAD and INR, a purchase calculator, a year of ratio history, and a small assistant that answers questions about the current numbers.
+A web dashboard for the gold/silver ratio: spot prices in USD, CAD, EUR and INR with a currency picker, a purchase calculator, a year of ratio history, and a small assistant that answers questions about the current numbers.
 
 Live prices come from [Gold API](https://gold-api.com), which is free and needs no key. Responses are cached on disk, so the number of provider requests stays the same however many people visit.
 

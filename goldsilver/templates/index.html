@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gold/Silver Ratio Tracker</title>
-  <meta name="description" content="Track the gold/silver ratio, spot prices in USD, CAD and INR, and a year of ratio history.">
+  <meta name="description" content="Track the gold/silver ratio, spot prices in USD, CAD, EUR and INR, and a year of ratio history.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -42,16 +42,24 @@
         <p class="hero__summary" id="ratio-summary">Loading the latest prices&hellip;</p>
         <p class="status" id="data-status" role="status"></p>
       </div>
-      <dl class="spot">
-        <div class="spot__item">
-          <dt><span class="swatch swatch--gold" aria-hidden="true"></span>Gold <abbr title="Troy ounce">/oz</abbr></dt>
-          <dd id="gold-spot">&mdash;</dd>
+      <div class="hero__prices">
+        <div class="segmented" role="group" aria-label="Display currency">
+          <button type="button" data-currency="USD" aria-pressed="true">USD</button>
+          <button type="button" data-currency="CAD" aria-pressed="false">CAD</button>
+          <button type="button" data-currency="EUR" aria-pressed="false">EUR</button>
+          <button type="button" data-currency="INR" aria-pressed="false">INR</button>
         </div>
-        <div class="spot__item">
-          <dt><span class="swatch swatch--silver" aria-hidden="true"></span>Silver <abbr title="Troy ounce">/oz</abbr></dt>
-          <dd id="silver-spot">&mdash;</dd>
-        </div>
-      </dl>
+        <dl class="spot">
+          <div class="spot__item">
+            <dt><span class="swatch swatch--gold" aria-hidden="true"></span>Gold <abbr title="Troy ounce">/oz</abbr></dt>
+            <dd id="gold-spot">&mdash;</dd>
+          </div>
+          <div class="spot__item">
+            <dt><span class="swatch swatch--silver" aria-hidden="true"></span>Silver <abbr title="Troy ounce">/oz</abbr></dt>
+            <dd id="silver-spot">&mdash;</dd>
+          </div>
+        </dl>
+      </div>
     </section>
 
     <section class="section" id="prices" aria-labelledby="prices-title">
@@ -84,7 +92,7 @@
         <p class="section__lead">Compare how much of each metal an amount buys at spot, before dealer premiums and fees.</p>
         <div class="calculator">
           <div class="field">
-            <label for="investment-amount">Amount (USD)</label>
+            <label for="investment-amount">Amount (<span id="amount-currency">USD</span>)</label>
             <input id="investment-amount" type="number" inputmode="decimal" min="0" step="100" value="10000">
           </div>
           <dl class="calculator__results" aria-live="polite">

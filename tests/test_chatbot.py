@@ -3,7 +3,7 @@ import pytest
 from goldsilver.chatbot import DEFAULT_INVESTMENT_USD, _parse_amount, respond
 from goldsilver.market import Quote
 
-QUOTE = Quote(gold_usd=2000.0, silver_usd=25.0, usd_cad=1.4, usd_inr=88.0, as_of=1)
+QUOTE = Quote(gold_usd=2000.0, silver_usd=25.0, usd_cad=1.4, usd_eur=0.9, usd_inr=88.0, as_of=1)
 
 
 @pytest.mark.parametrize(
@@ -15,6 +15,7 @@ QUOTE = Quote(gold_usd=2000.0, silver_usd=25.0, usd_cad=1.4, usd_inr=88.0, as_of
         ("Why does the ratio matter?", "What the ratio means"),
         ("Show me the historical trend", "The ratio in historical context"),
         ("Prices in Canada", "Prices in Canada (CAD)"),
+        ("Gold price in euros", "Prices in Europe (EUR)"),
         ("Silver price in rupees", "Prices in India (INR)"),
         ("Show me prices per gram", "Price per gram"),
         ("Compare gold and silver", "Gold compared with silver"),

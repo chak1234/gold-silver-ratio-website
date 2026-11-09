@@ -21,7 +21,9 @@ class FakeMarket:
         return History(self.points, False, False, "Test source")
 
 
-QUOTE = Quote(gold_usd=2000.0, silver_usd=25.0, usd_cad=1.4, usd_inr=88.0, as_of=1700000000)
+QUOTE = Quote(
+    gold_usd=2000.0, silver_usd=25.0, usd_cad=1.4, usd_eur=0.9, usd_inr=88.0, as_of=1700000000
+)
 POINTS = [{"date": "2026-01-01", "gold": 2000.0, "silver": 25.0, "ratio": 80.0}]
 
 
@@ -53,7 +55,9 @@ def test_prices_payload(client):
     assert data["ratio"] == 80
     assert data["stale"] is False
     assert data["as_of"] == "2023-11-14T22:13:20+00:00"
+    assert set(data["prices"]) == {"USD", "CAD", "EUR", "INR"}
     assert data["prices"]["USD"]["gold"]["ounce"] == 2000
+    assert data["prices"]["EUR"]["gold"]["ounce"] == 1800
     assert data["prices"]["INR"]["silver"]["gram"] == round(25 * 88 / 31.1035, 2)
     assert data["reference"]["long_run_average"] == 60
 

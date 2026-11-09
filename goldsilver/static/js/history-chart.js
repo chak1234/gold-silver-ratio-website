@@ -217,7 +217,7 @@ export async function initHistoryChart(longRunAverage) {
     }
     draw();
   } catch {
-    document.querySelector(".segmented").hidden = true;
+    document.querySelector(".section__header .segmented").hidden = true;
     showMessage("Historical data is unavailable right now.");
   }
 }

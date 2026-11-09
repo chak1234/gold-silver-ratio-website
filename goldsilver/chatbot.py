@@ -18,7 +18,7 @@ DEFAULT_INVESTMENT_USD = 10_000
 MAX_INVESTMENT_USD = 1_000_000_000_000
 NOT_ADVICE = "Educational information only, not financial advice."
 
-SYMBOLS = {"USD": "$", "CAD": "CA$", "INR": "₹"}
+SYMBOLS = {"USD": "$", "CAD": "CA$", "EUR": "€", "INR": "₹"}
 MULTIPLIERS = {"k": 1e3, "thousand": 1e3, "m": 1e6, "million": 1e6}
 
 _EXPLAIN = re.compile(r"\b(explain|means?|meaning|define|definition|why|matters?|important)\b")
@@ -28,6 +28,7 @@ _AMOUNT = re.compile(
     r"(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(k|m|thousand|million)?\b",
 )
 _CANADA = re.compile(r"\b(canada|canadian|cad)\b")
+_EUROPE = re.compile(r"\b(europe|european|eur|euros?)\b")
 _INDIA = re.compile(r"\b(india|indian|inr|rupees?)\b")
 _HISTORY = re.compile(r"\b(history|historical|past|trends?|all[- ]time)\b")
 _RATIO = re.compile(r"\bratio\b")
@@ -80,7 +81,7 @@ def _help() -> Reply:
             "What is the gold price?",
             "What is the silver price?",
             "What is the gold/silver ratio?",
-            "What are prices in Canada or India?",
+            "What are prices in Canada, Europe or India?",
             "Show me prices per gram.",
             "How much gold can I buy with $10,000?",
             "Why does the ratio matter?",
@@ -225,7 +226,7 @@ def respond(question: str, quote: Quote | None) -> Reply:
         wants_investment
         or has_gold
         or has_silver
-        or any(p.search(text) for p in (_CANADA, _INDIA, _RATIO, _GRAM, _COMPARE))
+        or any(p.search(text) for p in (_CANADA, _EUROPE, _INDIA, _RATIO, _GRAM, _COMPARE))
     )
     if not needs_quote:
         return _help()
@@ -236,6 +237,8 @@ def respond(question: str, quote: Quote | None) -> Reply:
         return _investment(quote, text)
     if _CANADA.search(text):
         return _country(quote, "Canada", "CAD")
+    if _EUROPE.search(text):
+        return _country(quote, "Europe", "EUR")
     if _INDIA.search(text):
         return _country(quote, "India", "INR")
     if _RATIO.search(text):

@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 
 GRAMS_PER_TROY_OUNCE = 31.1035
 HISTORY_DAYS = 365
+CURRENCIES = ("USD", "CAD", "EUR", "INR")
 SOURCE_NAME = "Gold API"
 BACKUP_HISTORY_SOURCE = "Yahoo Finance (COMEX futures)"
+QUOTE_KEY = "live_quote"
 HISTORY_KEY = "daily_history"
 SNAPSHOTS_KEY = "snapshots"
 
@@ -93,6 +95,7 @@ class Quote:
     gold_usd: float
     silver_usd: float
     usd_cad: float
+    usd_eur: float
     usd_inr: float
     as_of: int
     stale: bool = False
@@ -102,7 +105,8 @@ class Quote:
         return self.gold_usd / self.silver_usd
 
     def rate(self, currency: str) -> float:
-        return {"USD": 1.0, "CAD": self.usd_cad, "INR": self.usd_inr}[currency]
+        rates = {"USD": 1.0, "CAD": self.usd_cad, "EUR": self.usd_eur, "INR": self.usd_inr}
+        return rates[currency]
 
     def price_per_ounce(self, metal: str, currency: str) -> float:
         usd = self.gold_usd if metal == "gold" else self.silver_usd
@@ -121,9 +125,10 @@ class GoldApiClient:
 
     BASE_URL = "https://api.gold-api.com"
 
-    def __init__(self, api_key: str = "", timeout: float = 10) -> None:
+    def __init__(self, api_key: str = "", timeout: float = 10, request_gap: float = 1.0) -> None:
         self._api_key = api_key
         self._timeout = timeout
+        self._request_gap = request_gap
 
     @property
     def has_key(self) -> bool:
@@ -143,16 +148,21 @@ class GoldApiClient:
         return price / rate, rate, updated
 
     def latest(self) -> dict[str, float | int]:
-        # Each response also carries an exchange rate, so two requests cover both
-        # metals and both currencies. The provider bans clients that send bursts.
+        # Each response also carries an exchange rate, so three requests cover both
+        # metals and all currencies. The provider bans clients that send several
+        # requests a second, so they are spaced out.
         gold_usd, usd_cad, gold_updated = self._price("XAU", "CAD")
+        time.sleep(self._request_gap)
         silver_usd, usd_inr, silver_updated = self._price("XAG", "INR")
+        time.sleep(self._request_gap)
+        _, usd_eur, rate_updated = self._price("XAU", "EUR")
         return {
             "gold_usd": gold_usd,
             "silver_usd": silver_usd,
             "usd_cad": usd_cad,
+            "usd_eur": usd_eur,
             "usd_inr": usd_inr,
-            "as_of": min(gold_updated, silver_updated),
+            "as_of": min(gold_updated, silver_updated, rate_updated),
         }
 
     def _daily_average(self, symbol: str, start: int, end: int) -> dict[str, float]:
@@ -344,7 +354,7 @@ class MarketService:
             raise MarketDataError(f"no {key} data available")
 
     def latest(self) -> Quote:
-        value, stale = self._fetch("quote", self._price_ttl, self._client.latest)
+        value, stale = self._fetch(QUOTE_KEY, self._price_ttl, self._client.latest)
         quote = Quote(**value, stale=stale)
         self._record(quote)
         return quote
@@ -391,6 +401,6 @@ def quote_to_json(quote: Quote) -> dict[str, Any]:
                     for metal in ("gold", "silver")
                 },
             }
-            for currency in ("USD", "CAD", "INR")
+            for currency in CURRENCIES
         },
     }

@@ -21,12 +21,21 @@ from goldsilver.market import (
 
 GOLD_URL = "https://api.gold-api.com/price/XAU/CAD"
 SILVER_URL = "https://api.gold-api.com/price/XAG/INR"
+EUR_URL = "https://api.gold-api.com/price/XAU/EUR"
 HISTORY_URL = "https://api.gold-api.com/history"
 YAHOO_GOLD_URL = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F"
 YAHOO_SILVER_URL = "https://query1.finance.yahoo.com/v8/finance/chart/SI=F"
-VALUE = {"gold_usd": 2000.0, "silver_usd": 25.0, "usd_cad": 1.4, "usd_inr": 88.0, "as_of": 1}
+VALUE = {
+    "gold_usd": 2000.0,
+    "silver_usd": 25.0,
+    "usd_cad": 1.4,
+    "usd_eur": 0.9,
+    "usd_inr": 88.0,
+    "as_of": 1,
+}
 GOLD = {"price": 2800.0, "exchangeRate": 1.4, "updatedAt": "2023-11-14T22:13:25Z"}
 SILVER = {"price": 2200.0, "exchangeRate": 88.0, "updatedAt": "2023-11-14T22:13:20Z"}
+EUR = {"price": 1800.0, "exchangeRate": 0.9, "updatedAt": "2023-11-14T22:13:30Z"}
 DAY_ONE = 1767243600  # 2026-01-01 05:00 UTC
 DAY_TWO = DAY_ONE + 86_400
 
@@ -90,19 +99,30 @@ def service():
 
 
 @responses.activate
-def test_latest_uses_two_keyless_requests():
+def test_latest_uses_three_keyless_requests():
     responses.get(GOLD_URL, json=GOLD)
     responses.get(SILVER_URL, json=SILVER)
+    responses.get(EUR_URL, json=EUR)
 
-    value = GoldApiClient().latest()
+    value = GoldApiClient(request_gap=0).latest()
 
     assert value["gold_usd"] == pytest.approx(2000)
     assert value["silver_usd"] == pytest.approx(25)
     assert value["usd_cad"] == pytest.approx(1.4)
+    assert value["usd_eur"] == pytest.approx(0.9)
     assert value["usd_inr"] == pytest.approx(88)
-    assert value["as_of"] == 1700000000  # The older of the two readings.
-    assert len(responses.calls) == 2
+    assert value["as_of"] == 1700000000  # The oldest of the readings.
+    assert len(responses.calls) == 3
     assert "x-api-key" not in responses.calls[0].request.headers
+
+
+def test_cached_quote_from_before_eur_is_ignored():
+    store = MemoryStore()
+    old = {key: value for key, value in VALUE.items() if key != "usd_eur"}
+    store.set("quote", {"fetched_at": 1000.0, "value": old})
+    market = MarketService(FakeClient(), store, price_ttl=100, history_ttl=100, clock=Clock())
+
+    assert market.latest().usd_eur == 0.9
 
 
 @responses.activate

@@ -145,6 +145,8 @@ nav a:hover { color: var(--ink); }
   border-radius: 6px;
 }
 
+.hero__prices { display: grid; gap: 0.75rem; }
+.hero__prices .segmented { justify-self: end; }
 .spot { display: grid; gap: 0.75rem; }
 .spot__item, .calculator, .chart-card, .stats > div, .about article {
   background: var(--surface);
@@ -239,6 +241,7 @@ nav a:hover { color: var(--ink); }
   font-size: 0.875rem;
 }
 .segmented button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+#price-rows tr.is-selected > * { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .chart-card { padding: 1rem; }
 .chart-frame { position: relative; height: 22rem; }
 .chart-frame.is-empty canvas { display: none; }
@@ -345,6 +348,7 @@ nav a:hover { color: var(--ink); }
 /* Responsive */
 @media (max-width: 860px) {
   .hero { grid-template-columns: minmax(0, 1fr); padding-block: 2.5rem; gap: 1.5rem; }
+  .hero__prices .segmented { justify-self: start; }
   .spot { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .spot dd { font-size: 1.375rem; }
   .calculator { grid-template-columns: minmax(0, 1fr); }

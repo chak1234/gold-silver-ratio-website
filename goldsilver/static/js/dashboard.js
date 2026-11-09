@@ -2,7 +2,8 @@ import { fetchJson } from "./api.js";
 
 const GRAMS_PER_OUNCE = 31.1035;
 const REFRESH_MS = 60 * 1000; // Served from the backend cache, so visitors add no provider requests.
-const CURRENCIES = ["USD", "CAD", "INR"];
+const CURRENCIES = ["USD", "CAD", "EUR", "INR"];
+const CURRENCY_STORAGE_KEY = "display-currency";
 
 const byId = (id) => document.getElementById(id);
 
@@ -20,7 +21,25 @@ const timestamp = (iso) =>
     new Date(iso),
   );
 
+function savedCurrency() {
+  try {
+    const saved = localStorage.getItem(CURRENCY_STORAGE_KEY);
+    return CURRENCIES.includes(saved) ? saved : "USD";
+  } catch {
+    return "USD";
+  }
+}
+
+function saveCurrency(code) {
+  try {
+    localStorage.setItem(CURRENCY_STORAGE_KEY, code);
+  } catch {
+    // The choice just won't be remembered next visit.
+  }
+}
+
 let latest = null;
+let selected = savedCurrency();
 
 function renderPriceTable(prices) {
   const rows = CURRENCIES.map((code) => {
@@ -35,6 +54,7 @@ function renderPriceTable(prices) {
       number(rate, code === "USD" ? 2 : 4),
     ];
     const row = document.createElement("tr");
+    row.dataset.currency = code;
     const header = document.createElement("th");
     header.scope = "row";
     header.textContent = code;
@@ -53,10 +73,25 @@ function renderCalculator() {
   const amount = Number.parseFloat(byId("investment-amount").value);
   const valid = latest && Number.isFinite(amount) && amount >= 0;
   for (const metal of ["gold", "silver"]) {
-    const ounces = valid ? amount / latest.prices.USD[metal].ounce : null;
+    const ounces = valid ? amount / latest.prices[selected][metal].ounce : null;
     byId(`${metal}-ounces`).textContent = valid ? number(ounces, metal === "gold" ? 4 : 2) : "—";
     byId(`${metal}-grams`).textContent = valid ? number(ounces * GRAMS_PER_OUNCE, 2) : "—";
   }
+}
+
+function renderSelection() {
+  for (const button of document.querySelectorAll("button[data-currency]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.currency === selected));
+  }
+  for (const row of byId("price-rows").children) {
+    row.classList.toggle("is-selected", row.dataset.currency === selected);
+  }
+  byId("amount-currency").textContent = selected;
+  if (latest) {
+    byId("gold-spot").textContent = currency(latest.prices[selected].gold.ounce, selected);
+    byId("silver-spot").textContent = currency(latest.prices[selected].silver.ounce, selected);
+  }
+  renderCalculator();
 }
 
 function render(data) {
@@ -69,9 +104,6 @@ function render(data) {
   byId("ratio-summary").textContent =
     `One ounce of gold buys ${number(data.ratio, 2)} ounces of silver, ` +
     `${number(Math.abs(difference), 0)}% ${position} the long-run average of about ${average}:1.`;
-  byId("gold-spot").textContent = currency(data.prices.USD.gold.ounce, "USD");
-  byId("silver-spot").textContent = currency(data.prices.USD.silver.ounce, "USD");
-
   byId("reference-average").textContent = `~${average}:1`;
   byId("reference-low").textContent = `~${data.reference.modern_low}:1`;
   byId("reference-high").textContent = `~${data.reference.modern_high}:1`;
@@ -84,7 +116,7 @@ function render(data) {
     : `Prices as of ${timestamp(data.as_of)} · Source: ${data.source}`;
 
   renderPriceTable(data.prices);
-  renderCalculator();
+  renderSelection();
 }
 
 function renderUnavailable() {
@@ -112,6 +144,14 @@ async function refresh() {
 /** Start the dashboard. Resolves with the first price payload, or null. */
 export function initDashboard() {
   byId("investment-amount").addEventListener("input", renderCalculator);
+  for (const button of document.querySelectorAll("button[data-currency]")) {
+    button.addEventListener("click", () => {
+      selected = button.dataset.currency;
+      saveCurrency(selected);
+      renderSelection();
+    });
+  }
+  renderSelection();
   setInterval(() => {
     if (!document.hidden) {
       refresh();
