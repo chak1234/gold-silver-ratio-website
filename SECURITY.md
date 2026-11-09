@@ -8,7 +8,7 @@ Include steps to reproduce and the affected version.
 
 ## How this project handles secrets
 
-- The MetalpriceAPI key is read from the server environment and is never sent to the browser.
+- The optional Gold API key is read from the server environment and is never sent to the browser.
 - The key is sent to the provider in a request header, so it stays out of URLs and logs.
 - `.env` is excluded from version control. If a key is ever exposed, rotate it with the provider.
 

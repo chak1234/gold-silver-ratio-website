@@ -1,4 +1,4 @@
-"""Market data: the MetalpriceAPI client and a quota-aware persistent cache."""
+"""Market data: the Gold API and Yahoo Finance clients and a persistent cache."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -20,8 +20,10 @@ from .config import Settings
 logger = logging.getLogger(__name__)
 
 GRAMS_PER_TROY_OUNCE = 31.1035
-HISTORY_DAYS = 365  # MetalpriceAPI's maximum range for a single timeframe request.
-SOURCE_NAME = "MetalpriceAPI"
+HISTORY_DAYS = 365
+SOURCE_NAME = "Gold API"
+BACKUP_HISTORY_SOURCE = "Yahoo Finance (COMEX futures)"
+HISTORY_KEY = "daily_history"
 SNAPSHOTS_KEY = "snapshots"
 
 
@@ -39,21 +41,49 @@ class History(NamedTuple):
     points: list[dict[str, float | str]]
     stale: bool
     recorded: bool
+    source: str = SOURCE_NAME
 
 
-def _inverse(rates: dict[str, Any], code: str) -> float:
-    """Convert an "ounces per US dollar" rate into US dollars per ounce."""
+def _get_json(
+    url: str,
+    label: str,
+    timeout: float,
+    params: dict[str, str | int] | None = None,
+    headers: dict[str, str] | None = None,
+) -> Any:
     try:
-        rate = float(rates[code])
-    except (KeyError, TypeError, ValueError):
-        raise MarketDataError(f"response has no usable {code} rate") from None
-    if rate <= 0:
-        raise MarketDataError(f"response has a non-positive {code} rate")
-    return 1 / rate
+        response = requests.get(url, params=params, headers=headers, timeout=timeout)
+    except requests.RequestException as exc:
+        raise MarketDataError(f"{label} request failed: {type(exc).__name__}") from None
+    if 400 <= response.status_code < 500:
+        raise ProviderRejectedError(f"{label} rejected with HTTP {response.status_code}")
+    if response.status_code != 200:
+        raise MarketDataError(f"{label} failed with HTTP {response.status_code}")
+    try:
+        return response.json()
+    except ValueError:
+        raise MarketDataError(f"{label} returned invalid JSON") from None
 
 
-def _rate(rates: dict[str, Any], code: str) -> float:
-    return 1 / _inverse(rates, code)
+def _positive(value: Any, label: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise MarketDataError(f"response has no usable {label}") from None
+    if not number > 0:
+        raise MarketDataError(f"response has a non-positive {label}")
+    return number
+
+
+def _merge_daily(gold: dict[str, float], silver: dict[str, float]) -> list[dict[str, float | str]]:
+    """Keep only days with both prices, skipping gaps rather than inventing values."""
+    points: list[dict[str, float | str]] = [
+        {"date": day, "gold": gold[day], "silver": silver[day], "ratio": gold[day] / silver[day]}
+        for day in sorted(gold.keys() & silver.keys())
+    ]
+    if not points:
+        raise MarketDataError("history response has no usable points")
+    return points
 
 
 @dataclass(frozen=True)
@@ -82,77 +112,141 @@ class Quote:
         return self.price_per_ounce(metal, currency) / GRAMS_PER_TROY_OUNCE
 
 
-class MetalPriceClient:
-    """Thin client for https://metalpriceapi.com.
+class GoldApiClient:
+    """Client for https://gold-api.com.
 
-    The key travels in a header so it cannot end up in URLs, logs or tracebacks.
+    Live prices need no key. The optional history key travels in a header so it
+    cannot end up in URLs, logs or tracebacks.
     """
 
-    BASE_URL = "https://api.metalpriceapi.com/v1"
+    BASE_URL = "https://api.gold-api.com"
 
-    def __init__(self, api_key: str, timeout: float = 10) -> None:
+    def __init__(self, api_key: str = "", timeout: float = 10) -> None:
         self._api_key = api_key
         self._timeout = timeout
 
-    def _get(self, path: str, **params: str) -> dict[str, Any]:
-        if not self._api_key:
-            raise MarketDataError("METALPRICE_API_KEY is not configured")
-        try:
-            response = requests.get(
-                f"{self.BASE_URL}/{path}",
-                params={"base": "USD", **params},
-                headers={"X-API-KEY": self._api_key},
-                timeout=self._timeout,
-            )
-            payload = response.json()
-        except (requests.RequestException, ValueError) as exc:
-            raise MarketDataError(f"{path} request failed: {type(exc).__name__}") from None
+    @property
+    def has_key(self) -> bool:
+        return bool(self._api_key)
 
-        if not isinstance(payload, dict) or not payload.get("success"):
-            error = payload.get("error") if isinstance(payload, dict) else None
-            code = error.get("code") if isinstance(error, dict) else "unknown"
-            raise ProviderRejectedError(
-                f"{path} rejected with HTTP {response.status_code}, error code {code}"
-            )
-        return payload
+    def _price(self, symbol: str, currency: str) -> tuple[float, float, int]:
+        """Return ``(USD price, USD exchange rate, updated-at timestamp)``."""
+        payload = _get_json(f"{self.BASE_URL}/price/{symbol}/{currency}", "price", self._timeout)
+        if not isinstance(payload, dict):
+            raise MarketDataError("price response has an unexpected shape")
+        rate = _positive(payload.get("exchangeRate"), f"{currency} rate")
+        price = _positive(payload.get("price"), f"{symbol} price")
+        try:
+            updated = int(datetime.fromisoformat(payload["updatedAt"]).timestamp())
+        except (KeyError, TypeError, ValueError):
+            raise MarketDataError("price response has no usable timestamp") from None
+        return price / rate, rate, updated
 
     def latest(self) -> dict[str, float | int]:
-        payload = self._get("latest", currencies="XAU,XAG,CAD,INR")
-        rates = payload.get("rates")
-        if not isinstance(rates, dict):
-            raise MarketDataError("latest response has no rates")
+        # Each response also carries an exchange rate, so two requests cover both
+        # metals and both currencies. The provider bans clients that send bursts.
+        gold_usd, usd_cad, gold_updated = self._price("XAU", "CAD")
+        silver_usd, usd_inr, silver_updated = self._price("XAG", "INR")
         return {
-            "gold_usd": _inverse(rates, "XAU"),
-            "silver_usd": _inverse(rates, "XAG"),
-            "usd_cad": _rate(rates, "CAD"),
-            "usd_inr": _rate(rates, "INR"),
-            "as_of": int(payload.get("timestamp") or time.time()),
+            "gold_usd": gold_usd,
+            "silver_usd": silver_usd,
+            "usd_cad": usd_cad,
+            "usd_inr": usd_inr,
+            "as_of": min(gold_updated, silver_updated),
         }
 
-    def history(self, days: int = HISTORY_DAYS) -> list[dict[str, float | str]]:
-        end = datetime.now(UTC).date()
-        start = end - timedelta(days=days)
-        payload = self._get(
-            "timeframe",
-            start_date=start.isoformat(),
-            end_date=end.isoformat(),
-            currencies="XAU,XAG",
+    def _daily_average(self, symbol: str, start: int, end: int) -> dict[str, float]:
+        payload = _get_json(
+            f"{self.BASE_URL}/history",
+            "history",
+            self._timeout,
+            params={
+                "symbol": symbol,
+                "startTimestamp": start,
+                "endTimestamp": end,
+                "groupBy": "day",
+                "aggregation": "avg",
+                "orderBy": "asc",
+            },
+            headers={"x-api-key": self._api_key},
         )
-        by_date = payload.get("rates")
-        if not isinstance(by_date, dict) or not by_date:
-            raise MarketDataError("timeframe response has no rates")
-
-        points = []
-        for day, rates in sorted(by_date.items()):
+        if not isinstance(payload, list):
+            raise MarketDataError("history response has an unexpected shape")
+        prices = {}
+        for row in payload:
             try:
+                day = str(row["day"])[:10]
                 date.fromisoformat(day)
-                gold, silver = _inverse(rates, "XAU"), _inverse(rates, "XAG")
-            except (MarketDataError, TypeError, ValueError):
-                continue  # Markets close on some days; skip gaps rather than invent values.
-            points.append({"date": day, "gold": gold, "silver": silver, "ratio": gold / silver})
-        if not points:
-            raise MarketDataError("timeframe response has no usable points")
-        return points
+                prices[day] = _positive(row["avg_price"], f"{symbol} price")
+            except (KeyError, TypeError, ValueError, MarketDataError):
+                continue
+        return prices
+
+    def history(self, days: int = HISTORY_DAYS) -> list[dict[str, float | str]]:
+        if not self._api_key:
+            raise MarketDataError("GOLD_API_KEY is not configured")
+        end = int(time.time())
+        start = end - days * 86_400
+        return _merge_daily(
+            self._daily_average("XAU", start, end),
+            self._daily_average("XAG", start, end),
+        )
+
+
+class YahooFinanceClient:
+    """Backup daily history from Yahoo's unofficial chart endpoint (COMEX futures)."""
+
+    BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
+    USER_AGENT = "GoldSilverRatioTracker/1.0"
+
+    def __init__(self, timeout: float = 10) -> None:
+        self._timeout = timeout
+
+    def _daily_close(self, symbol: str) -> dict[str, float]:
+        payload = _get_json(
+            f"{self.BASE_URL}/{symbol}",
+            "backup history",
+            self._timeout,
+            params={"range": "1y", "interval": "1d"},
+            headers={"User-Agent": self.USER_AGENT},
+        )
+        try:
+            result = payload["chart"]["result"][0]
+            timestamps = result["timestamp"]
+            closes = result["indicators"]["quote"][0]["close"]
+        except (KeyError, IndexError, TypeError):
+            raise MarketDataError("backup history response has an unexpected shape") from None
+
+        prices = {}
+        for timestamp, close in zip(timestamps, closes, strict=False):
+            try:
+                day = datetime.fromtimestamp(timestamp, UTC).date().isoformat()
+                prices[day] = _positive(close, f"{symbol} close")
+            except (TypeError, ValueError, OverflowError, OSError, MarketDataError):
+                continue
+        return prices
+
+    def history(self) -> list[dict[str, float | str]]:
+        return _merge_daily(self._daily_close("GC=F"), self._daily_close("SI=F"))
+
+
+class MarketDataClient:
+    """Gold API for live prices, with Yahoo Finance as the backup for history."""
+
+    def __init__(self, primary: GoldApiClient, backup: YahooFinanceClient) -> None:
+        self._primary = primary
+        self._backup = backup
+
+    def latest(self) -> dict[str, float | int]:
+        return self._primary.latest()
+
+    def history(self) -> dict[str, Any]:
+        if self._primary.has_key:
+            try:
+                return {"source": SOURCE_NAME, "points": self._primary.history()}
+            except MarketDataError as exc:
+                logger.warning("Gold API history failed, trying the backup: %s", exc)
+        return {"source": BACKUP_HISTORY_SOURCE, "points": self._backup.history()}
 
 
 class JsonFileStore:
@@ -214,7 +308,10 @@ class MarketService:
     @classmethod
     def from_settings(cls, settings: Settings) -> MarketService:
         return cls(
-            client=MetalPriceClient(settings.api_key, settings.request_timeout_seconds),
+            client=MarketDataClient(
+                GoldApiClient(settings.gold_api_key, settings.request_timeout_seconds),
+                YahooFinanceClient(settings.request_timeout_seconds),
+            ),
             store=JsonFileStore(settings.cache_path),
             price_ttl=settings.price_ttl_seconds,
             history_ttl=settings.history_ttl_seconds,
@@ -235,7 +332,8 @@ class MarketService:
                 except MarketDataError as exc:
                     logger.warning("Market data refresh failed (%s): %s", key, exc)
                     # A refusal will not change within minutes, so don't spend quota asking.
-                    delay = ttl if isinstance(exc, ProviderRejectedError) else self._retry_delay
+                    rejected = isinstance(exc, ProviderRejectedError)
+                    delay = max(ttl, self._retry_delay) if rejected else self._retry_delay
                     self._retry_at[key] = now + delay
                 else:
                     self._store.set(key, {"fetched_at": now, "value": value})
@@ -264,14 +362,14 @@ class MarketService:
 
     def history(self) -> History:
         try:
-            points, stale = self._fetch("history", self._history_ttl, self._client.history)
+            value, stale = self._fetch(HISTORY_KEY, self._history_ttl, self._client.history)
         except MarketDataError:
             with self._lock:
                 days = self._store.get(SNAPSHOTS_KEY) or {}
             if not days:
                 raise
             return History([{"date": d, **days[d]} for d in sorted(days)], False, True)
-        return History(points, stale, False)
+        return History(value["points"], stale, False, value["source"])
 
 
 def quote_to_json(quote: Quote) -> dict[str, Any]:

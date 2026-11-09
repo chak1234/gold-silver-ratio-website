@@ -207,16 +207,17 @@ export async function initHistoryChart(longRunAverage) {
   });
 
   try {
-    ({ points, recorded } = await fetchJson("/api/history"));
+    const history = await fetchJson("/api/history");
+    ({ points, recorded } = history);
     if (recorded && points.length) {
       byId("history-lead").textContent =
         `Daily readings recorded by this site since ${dateLabel(points[0].date, { dateStyle: "medium" })}.`;
+    } else {
+      byId("history-lead").textContent = `Daily ratio from ${history.source}.`;
     }
     draw();
   } catch {
     document.querySelector(".segmented").hidden = true;
-    showMessage(
-      "Historical data is unavailable right now. It may not be included in the current data plan.",
-    );
+    showMessage("Historical data is unavailable right now.");
   }
 }

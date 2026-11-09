@@ -22,8 +22,8 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = Settings.from_env()
-    if not settings.api_key:
-        logging.warning("METALPRICE_API_KEY is not set, so prices will be unavailable.")
+    if not settings.gold_api_key:
+        logging.info("GOLD_API_KEY is not set, so the history chart will use Yahoo Finance.")
 
     app = create_app(settings)
     if args.debug:

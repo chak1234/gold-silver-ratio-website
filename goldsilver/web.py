@@ -81,7 +81,7 @@ def create_app(settings: Settings | None = None, market: Any = None) -> Flask:
         except MarketDataError:
             return unavailable()
         return jsonify(
-            source=SOURCE_NAME,
+            source=result.source,
             stale=result.stale,
             recorded=result.recorded,
             points=result.points,

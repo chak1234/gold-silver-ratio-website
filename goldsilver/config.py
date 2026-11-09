@@ -25,13 +25,12 @@ def _int_env(name: str, default: int) -> int:
 class Settings:
     """Runtime configuration.
 
-    The default cache lifetimes keep a single deployment inside MetalpriceAPI's
-    free plan of 100 requests a month: two price refreshes a day (about 60) plus
-    one history refresh a day (about 30).
+    Gold API's live prices are free and need no key. The one-minute default keeps
+    well clear of its ban on clients that send bursts of requests.
     """
 
-    api_key: str = ""
-    price_ttl_seconds: int = 43_200
+    gold_api_key: str = ""
+    price_ttl_seconds: int = 60
     history_ttl_seconds: int = 86_400
     retry_delay_seconds: int = 300
     request_timeout_seconds: int = 10
@@ -43,7 +42,7 @@ class Settings:
     def from_env(cls) -> Settings:
         load_dotenv(PROJECT_ROOT / ".env")
         return cls(
-            api_key=os.getenv("METALPRICE_API_KEY", "").strip(),
+            gold_api_key=os.getenv("GOLD_API_KEY", "").strip(),
             price_ttl_seconds=_int_env("PRICE_CACHE_SECONDS", cls.price_ttl_seconds),
             history_ttl_seconds=_int_env("HISTORY_CACHE_SECONDS", cls.history_ttl_seconds),
             cache_path=Path(os.getenv("CACHE_PATH", "").strip() or cls.cache_path),

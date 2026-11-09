@@ -18,7 +18,7 @@ class FakeMarket:
     def history(self):
         if self.points is None:
             raise MarketDataError("down")
-        return History(self.points, False, False)
+        return History(self.points, False, False, "Test source")
 
 
 QUOTE = Quote(gold_usd=2000.0, silver_usd=25.0, usd_cad=1.4, usd_inr=88.0, as_of=1700000000)
@@ -61,6 +61,7 @@ def test_prices_payload(client):
 def test_history_payload(client):
     data = client.get("/api/history").get_json()
     assert data["points"] == POINTS
+    assert data["source"] == "Test source"
     assert data["stale"] is False
     assert data["recorded"] is False
 

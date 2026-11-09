@@ -19,9 +19,7 @@ echo Installing dependencies...
 
 if not exist .env (
     copy .env.example .env >nul
-    echo Created .env. Add your METALPRICE_API_KEY to it, then run this script again.
-    pause
-    exit /b 1
+    echo Created .env with the default settings.
 )
 
 start "" http://127.0.0.1:5000

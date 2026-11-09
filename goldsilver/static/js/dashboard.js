@@ -1,7 +1,7 @@
 import { fetchJson } from "./api.js";
 
 const GRAMS_PER_OUNCE = 31.1035;
-const REFRESH_MS = 5 * 60 * 1000; // Served from the backend cache, so this costs no API quota.
+const REFRESH_MS = 60 * 1000; // Served from the backend cache, so visitors add no provider requests.
 const CURRENCIES = ["USD", "CAD", "INR"];
 
 const byId = (id) => document.getElementById(id);

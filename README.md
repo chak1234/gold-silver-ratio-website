@@ -2,15 +2,15 @@
 
 A web dashboard for the gold/silver ratio: spot prices in USD, CAD and INR, a purchase calculator, a year of ratio history, and a small assistant that answers questions about the current numbers.
 
-Prices come from [MetalpriceAPI](https://metalpriceapi.com). Keys stay on the server, and responses are cached on disk so the site runs within the provider's free plan however many people visit.
+Live prices come from [Gold API](https://gold-api.com), which is free and needs no key. Responses are cached on disk, so the number of provider requests stays the same however many people visit.
 
 > For information only. This is not financial advice.
 
 ## Quick start
 
-You need Python 3.11 or later and a [MetalpriceAPI key](https://metalpriceapi.com). The free plan works.
+You need Python 3.11 or later.
 
-**Windows:** run `scripts\start-windows.bat`. It sets everything up and opens the site. On first run it creates `.env` for you to add your key.
+**Windows:** run `scripts\start-windows.bat`. It sets everything up and opens the site.
 
 **macOS, Linux or manual setup:**
 
@@ -18,7 +18,7 @@ You need Python 3.11 or later and a [MetalpriceAPI key](https://metalpriceapi.co
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env             # then set METALPRICE_API_KEY
+cp .env.example .env
 python -m goldsilver
 ```
 
@@ -32,14 +32,14 @@ Settings are read from the environment or `.env`. See [.env.example](.env.exampl
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `METALPRICE_API_KEY` | none | Provider key. Required for prices. |
-| `PRICE_CACHE_SECONDS` | `43200` | How long to reuse the latest prices. |
+| `GOLD_API_KEY` | none | Optional free key. Makes the history chart use Gold API spot prices. |
+| `PRICE_CACHE_SECONDS` | `60` | How long to reuse the latest prices. |
 | `HISTORY_CACHE_SECONDS` | `86400` | How long to reuse the ratio history. |
 | `HOST` | `127.0.0.1` | Address to listen on. |
 | `PORT` | `5000` | Port to listen on. |
 | `CACHE_PATH` | `instance/market-cache.json` | Location of the on-disk cache. |
 
-The defaults use about 90 of the free plan's 100 monthly requests. The free plan updates once a day, so a shorter cache only helps on a paid plan.
+Gold API updates about every 30 seconds and bans clients that send bursts of requests, so avoid setting `PRICE_CACHE_SECONDS` very low.
 
 ## How it works
 
@@ -49,12 +49,13 @@ flowchart LR
     Desktop[Desktop app] --> Service
     Flask --> Service[MarketService]
     Service <--> Cache[(Disk cache)]
-    Service -->|only when the cache expires| Provider[MetalpriceAPI]
+    Service -->|only when the cache expires| Provider[Gold API]
+    Service -.->|backup for history| Backup[Yahoo Finance]
 ```
 
 If the provider fails, the site shows the last good data, labelled with its age, and waits before retrying. It never substitutes estimated prices.
 
-The history chart uses the provider's timeframe endpoint when the plan allows it. Otherwise it charts one reading a day recorded by the app, which starts empty and grows over time.
+The history chart uses Gold API's daily averages when `GOLD_API_KEY` is set. Without a key, or if that request fails, it uses COMEX futures closes from Yahoo Finance's unofficial endpoint. If both fail, it charts one reading a day recorded by the app.
 
 | Endpoint | Description |
 | --- | --- |
