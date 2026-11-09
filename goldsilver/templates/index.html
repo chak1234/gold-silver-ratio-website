@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gold/Silver Ratio Tracker</title>
+  <meta name="description" content="Track the gold/silver ratio, spot prices in USD, CAD and INR, and a year of ratio history.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+          integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+          crossorigin="anonymous"></script>
+  <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="brand" href="#top">
+        <img src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="26" height="26">
+        <span>Gold/Silver Ratio</span>
+      </a>
+      <nav aria-label="Primary">
+        <a href="#prices">Prices</a>
+        <a href="#calculator">Calculator</a>
+        <a href="#history">History</a>
+        <a href="#about">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero container" id="top" aria-labelledby="hero-title">
+      <div class="hero__ratio">
+        <h1 class="eyebrow" id="hero-title">Gold/silver ratio</h1>
+        <p class="hero__value"><span id="ratio-value">&mdash;</span><span class="hero__suffix">:1</span></p>
+        <p class="hero__summary" id="ratio-summary">Loading the latest prices&hellip;</p>
+        <p class="status" id="data-status" role="status"></p>
+      </div>
+      <dl class="spot">
+        <div class="spot__item">
+          <dt><span class="swatch swatch--gold" aria-hidden="true"></span>Gold <abbr title="Troy ounce">/oz</abbr></dt>
+          <dd id="gold-spot">&mdash;</dd>
+        </div>
+        <div class="spot__item">
+          <dt><span class="swatch swatch--silver" aria-hidden="true"></span>Silver <abbr title="Troy ounce">/oz</abbr></dt>
+          <dd id="silver-spot">&mdash;</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="section" id="prices" aria-labelledby="prices-title">
+      <div class="container">
+        <h2 id="prices-title">Prices by currency</h2>
+        <p class="section__lead">Spot prices converted at the latest exchange rates. One troy ounce is 31.1035 grams.</p>
+        <div class="table-scroll" tabindex="0" role="region" aria-labelledby="prices-title">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Currency</th>
+                <th scope="col">Gold, 1 g</th>
+                <th scope="col">Gold, 10 g</th>
+                <th scope="col">Gold, 1 oz</th>
+                <th scope="col">Silver, 1 g</th>
+                <th scope="col">Silver, 100 g</th>
+                <th scope="col">Silver, 1 oz</th>
+                <th scope="col">Per 1 USD</th>
+              </tr>
+            </thead>
+            <tbody id="price-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="calculator" aria-labelledby="calculator-title">
+      <div class="container">
+        <h2 id="calculator-title">What your money buys</h2>
+        <p class="section__lead">Compare how much of each metal an amount buys at spot, before dealer premiums and fees.</p>
+        <div class="calculator">
+          <div class="field">
+            <label for="investment-amount">Amount (USD)</label>
+            <input id="investment-amount" type="number" inputmode="decimal" min="0" step="100" value="10000">
+          </div>
+          <dl class="calculator__results" aria-live="polite">
+            <div>
+              <dt><span class="swatch swatch--gold" aria-hidden="true"></span>Gold</dt>
+              <dd><span id="gold-ounces">&mdash;</span> oz</dd>
+              <dd class="muted"><span id="gold-grams">&mdash;</span> g</dd>
+            </div>
+            <div>
+              <dt><span class="swatch swatch--silver" aria-hidden="true"></span>Silver</dt>
+              <dd><span id="silver-ounces">&mdash;</span> oz</dd>
+              <dd class="muted"><span id="silver-grams">&mdash;</span> g</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="history" aria-labelledby="history-title">
+      <div class="container">
+        <div class="section__header">
+          <div>
+            <h2 id="history-title">Ratio history</h2>
+            <p class="section__lead" id="history-lead">Daily ratio from {{ source }}.</p>
+          </div>
+          <div class="segmented" role="group" aria-label="Time range">
+            <button type="button" data-range="30">30D</button>
+            <button type="button" data-range="90" aria-pressed="true">90D</button>
+            <button type="button" data-range="365">1Y</button>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-frame">
+            <canvas id="ratio-chart" role="img" aria-label="Line chart of the gold/silver ratio over time. A data table follows."></canvas>
+            <p class="chart-message" id="chart-message" hidden></p>
+          </div>
+        </div>
+        <details class="chart-table" id="chart-table" hidden>
+          <summary>View the data as a table</summary>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Ratio</th>
+                  <th scope="col">Gold (USD/oz)</th>
+                  <th scope="col">Silver (USD/oz)</th>
+                </tr>
+              </thead>
+              <tbody id="history-rows"></tbody>
+            </table>
+          </div>
+        </details>
+        <dl class="stats">
+          <div><dt>Long-run average</dt><dd id="reference-average">&mdash;</dd></div>
+          <div><dt>Modern low</dt><dd id="reference-low">&mdash;</dd></div>
+          <div><dt>Modern high</dt><dd id="reference-high">&mdash;</dd></div>
+          <div><dt>Today versus average</dt><dd id="versus-average">&mdash;</dd></div>
+        </dl>
+        <p class="footnote">Long-run figures are approximate.</p>
+      </div>
+    </section>
+
+    <section class="section" id="about" aria-labelledby="about-title">
+      <div class="container">
+        <h2 id="about-title">About the ratio</h2>
+        <div class="about">
+          <article>
+            <h3>What it measures</h3>
+            <p>The ratio is the number of ounces of silver it takes to buy one ounce of gold. It compares the two metals without reference to any currency.</p>
+          </article>
+          <article>
+            <h3>How it is used</h3>
+            <p>A high reading can suggest silver is cheap relative to gold, and a low reading the opposite. It says nothing about whether either metal is cheap in absolute terms.</p>
+          </article>
+          <article>
+            <h3>Where the data comes from</h3>
+            <p>Prices and exchange rates come from {{ source }}. They are delayed spot references, not live dealing prices, and each reading shows when it was last updated.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>For information only. Not financial advice. Prices may be delayed and exclude dealer premiums, taxes and fees.</p>
+      <p class="muted">Data from {{ source }} &middot; v{{ version }}</p>
+    </div>
+  </footer>
+
+  <button class="chat-toggle" id="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 12a8 8 0 0 1-11.8 7L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>
+    <span>Ask</span>
+  </button>
+
+  <section class="chat" id="chat-panel" role="dialog" aria-labelledby="chat-title" hidden>
+    <header class="chat__header">
+      <div>
+        <h2 id="chat-title">Market assistant</h2>
+        <p>Automated answers based on current prices</p>
+      </div>
+      <button class="icon-button" id="chat-close" type="button" aria-label="Close assistant">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <div class="chat__log" id="chat-log" role="log" aria-live="polite" tabindex="0"></div>
+    <div class="chat__suggestions">
+      <button type="button" data-question="What is the current gold price?">Gold</button>
+      <button type="button" data-question="What is the current silver price?">Silver</button>
+      <button type="button" data-question="What is the gold/silver ratio?">Ratio</button>
+      <button type="button" data-question="Show me prices in India">India</button>
+      <button type="button" data-question="Show me prices in Canada">Canada</button>
+    </div>
+    <form class="chat__form" id="chat-form">
+      <label class="visually-hidden" for="chat-input">Your question</label>
+      <input id="chat-input" type="text" maxlength="500" autocomplete="off" placeholder="Ask a question">
+      <button type="submit">Send</button>
+    </form>
+  </section>
+</body>
+</html>
